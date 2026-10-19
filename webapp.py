@@ -230,7 +230,7 @@ def job_status(job_id):
         job = jobs.get(job_id)
         if not job:
             return jsonify(error="Job not found. It may have expired after a restart."), 404
-        safe = {k: job[k] for k in ("state", "stage", "percent", "detail", "error") if k in job}
+        safe = {k: job[k] for k in ("state", "stage", "percent", "detail", "error", "is_image") if k in job}
     return jsonify(safe)
 
 

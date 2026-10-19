@@ -20,7 +20,9 @@ OUTPUT_DIR = BASE / "output"
 WORK_DIR = BASE / "frames"
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_DURATION_SECONDS = 10
-ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+ALLOWED_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 
 for directory in (UPLOAD_DIR, OUTPUT_DIR, WORK_DIR):
     directory.mkdir(parents=True, exist_ok=True)
@@ -41,7 +43,7 @@ PAGE = r"""
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b12">
-<meta name="description" content="Anime video background remover.">
+<meta name="description" content="Image and anime video background remover.">
 <title>Background remover</title>
 <style>:root{color-scheme:light;--bg:#f5f5f2;--surface:#fff;--text:#22231f;--muted:#777970;--line:#e3e3dd;--accent:#426b55;--accent-hover:#31513f}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px 14px;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -59,15 +61,15 @@ button,.download{display:block;width:100%;border:0;border-radius:8px;padding:12p
 
 <section class="panel">
   <h1>Background remover</h1>
-  <p class="intro">Upload an anime clip to make a green-screen MP4.</p>
+  <p class="intro">Upload a photo or anime clip to remove its background.</p>
   <form id="form">
     <div class="section-label">Choose your video</div>
     <label class="drop">
       <strong>Choose a video</strong>
-      <span id="filename">Select a file from your device</span>
-      <input id="video" type="file" name="video" accept=".mp4,.mov,.mkv,.webm,.avi,video/*" required>
+      <span id="filename">Photos or videos · up to 100 MB</span>
+      <input id="video" type="file" name="video" accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,image/*,video/*" required>
     </label>
-    <div class="limits"><span class="limit">MP4, MOV, MKV, WebM, AVI</span><span class="limit">Up to 100 MB</span><span class="limit">Up to 10 seconds</span></div>
+    <div class="limits"><span class="limit">JPG, PNG, WebP, BMP</span><span class="limit">MP4, MOV, MKV, WebM, AVI</span><span class="limit">100 MB max · video 10 sec max</span></div>
     <button id="submit" type="submit">Remove background</button>
   </form>
   <div id="status" class="status" role="status" aria-live="polite"><strong id="stage">Getting things ready…</strong><div class="bar"><div id="fill" class="fill"></div></div><div id="percent">0%</div><p id="detail" class="small">Processing time depends on the clip and the remote model queue.</p><div id="download"></div></div>
@@ -93,7 +95,7 @@ form.addEventListener('submit',async e=>{
    await sleep(1800);const sr=await fetch('/api/jobs/'+encodeURIComponent(data.job_id));const s=await sr.json();
    if(!sr.ok)throw new Error(s.error||'Could not read job status.');
    stage.textContent=s.stage||'Processing';percent.textContent=(s.percent??0)+'%';fill.style.width=(s.percent??0)+'%';detail.textContent=s.detail||'Processing…';
-   if(s.state==='done'){fill.style.width='100%';percent.textContent='100%';stage.textContent='Ready to download';stage.classList.add('success');download.innerHTML='<a class="download" href="/api/jobs/'+encodeURIComponent(data.job_id)+'/download">Download green-screen MP4</a>';break;}
+   if(s.state==='done'){fill.style.width='100%';percent.textContent='100%';stage.textContent='Ready to download';stage.classList.add('success');download.innerHTML='<a class="download" href="/api/jobs/'+encodeURIComponent(data.job_id)+'/download">Download '+(s.is_image?'green-screen PNG':'green-screen MP4')+'</a>';break;}
    if(s.state==='error')throw new Error(s.error||'Processing failed.');
   }
  }catch(err){stage.textContent='Could not finish';stage.className='error';detail.textContent=err.message;fill.style.width='0%';}
@@ -125,13 +127,18 @@ def process_job(job_id, source, output):
         source.unlink(missing_ok=True)
         return
     try:
-        update_job(job_id, state="running", stage="Checking video", percent=2,
-                   detail="Checking duration and preparing the AI request.")
-        duration = probe_duration(source)
-        if duration > MAX_DURATION_SECONDS:
-            raise ValueError(f"Clip is {duration:.1f} seconds long. The current beta limit is {MAX_DURATION_SECONDS} seconds.")
-        update_job(job_id, stage="Extracting frames", percent=5,
-                   detail="FFmpeg is splitting the clip into frames.")
+        is_image = source.suffix.lower() in IMAGE_EXTENSIONS
+        if is_image:
+            update_job(job_id, state="running", stage="Removing background", percent=10,
+                       detail="Sending photo to the background-removal model.")
+        else:
+            update_job(job_id, state="running", stage="Checking video", percent=2,
+                       detail="Checking duration and preparing the AI request.")
+            duration = probe_duration(source)
+            if duration > MAX_DURATION_SECONDS:
+                raise ValueError(f"Clip is {duration:.1f} seconds long. The current beta limit is {MAX_DURATION_SECONDS} seconds.")
+            update_job(job_id, stage="Extracting frames", percent=5,
+                       detail="FFmpeg is splitting the clip into frames.")
         process = subprocess.Popen(
             [sys.executable, "-u", str(BASE / "remover.py"), str(source), str(output)],
             cwd=BASE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -168,7 +175,7 @@ def process_job(job_id, source, output):
         if not output.is_file():
             raise RuntimeError("Processing ended but no output file was created.")
         update_job(job_id, state="done", stage="Complete", percent=100,
-                   detail="Your green-screen video is ready.", output=output.name)
+                   detail="Your processed file is ready.", output=output.name, is_image=is_image)
     except Exception as exc:
         update_job(job_id, state="error", stage="Processing failed", error=str(exc),
                    detail="Try a shorter MP4 clip. If the remote model is down, try again later.")
@@ -191,14 +198,14 @@ def create_job():
     name = secure_filename(video.filename)
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
-        return jsonify(error="Unsupported file type. Use MP4, MOV, MKV, WebM or AVI."), 400
+        return jsonify(error="Unsupported file type. Use JPG, PNG, WebP, BMP or a supported video format."), 400
     # Only accept one queued/running job per server to protect the small beta host.
     with jobs_lock:
         if any(j.get("state") in {"queued", "running"} for j in jobs.values()):
             return jsonify(error="The server is busy processing another clip. Please try again in a few minutes."), 429
         job_id = uuid.uuid4().hex
         source = UPLOAD_DIR / f"{job_id}{suffix}"
-        output = OUTPUT_DIR / f"{job_id}_green.mp4"
+        output = OUTPUT_DIR / (f"{job_id}_green.png" if suffix in IMAGE_EXTENSIONS else f"{job_id}_green.mp4")
         jobs[job_id] = {"state": "queued", "stage": "Queued", "percent": 1,
                         "detail": "Waiting for the processor.", "created_at": time.time()}
     try:
@@ -237,7 +244,7 @@ def job_download(job_id):
     path = OUTPUT_DIR / filename
     if not filename or not path.is_file() or path.parent.resolve() != OUTPUT_DIR.resolve():
         abort(404)
-    return send_file(path, as_attachment=True, download_name="bgremover_green.mp4", mimetype="video/mp4")
+    return send_file(path, as_attachment=True, download_name=("bgremover_green.png" if path.suffix.lower() == ".png" else "bgremover_green.mp4"), mimetype=("image/png" if path.suffix.lower() == ".png" else "video/mp4"))
 
 
 @app.errorhandler(413)

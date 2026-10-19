@@ -74,13 +74,14 @@ def main():
     green_frames.mkdir(parents=True)
 
     fps = probe_fps(source)
-    print(f"Input: {source}")
-    print(f"FPS: {fps}")
-    print("Extracting frames...")
+    print(f"Input: {source}", flush=True)
+    print(f"FPS: {fps}", flush=True)
+    print("Extracting frames...", flush=True)
 
+    # Avoid deprecated/removed FFmpeg options such as -vsync on newer builds.
     run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-i", str(source), "-map", "0:v:0", "-vsync", "0",
+        "-i", str(source), "-map", "0:v:0",
         str(original_frames / "%06d.jpg"),
     ])
 
@@ -88,17 +89,15 @@ def main():
     if not frames:
         raise RuntimeError("FFmpeg did not extract any video frames.")
 
-    print(f"Found {len(frames)} frames.")
-    print("Connecting to the public anime segmentation demo...")
-    print("Note: each frame is uploaded to the hosted service.")
+    print(f"Found {len(frames)} frames.", flush=True)
+    print("Connecting to the public anime segmentation demo...", flush=True)
+    print("Note: each frame is uploaded to the hosted service.", flush=True)
 
     client = Client(SPACE_ID, verbose=False)
 
     for number, frame_path in enumerate(frames, start=1):
-        print(f"Processing frame {number}/{len(frames)}", end="\r", flush=True)
+        print(f"Processing frame {number}/{len(frames)}", flush=True)
 
-        # The Space returns (mask, cutout). Use the mask with the original
-        # frame RGB, avoiding white-background RGB contamination at soft edges.
         result = client.predict(
             handle_file(str(frame_path)),
             api_name="/rmbg_fn",
@@ -111,8 +110,7 @@ def main():
         mask_path = result_path(result[0])
         if not mask_path or not Path(mask_path).is_file():
             raise RuntimeError(
-                "Could not find the returned mask. Try client.view_api() to inspect "
-                "the current public Space API."
+                "Could not find the returned mask. The public Space API may have changed."
             )
 
         with Image.open(frame_path) as image:
@@ -129,8 +127,7 @@ def main():
         destination = green_frames / f"{number:06d}.png"
         background.convert("RGB").save(destination, optimize=False)
 
-    print("\nEncoding output video...")
-    # Optional audio mapping (1:a?) allows silent source clips too.
+    print("Encoding output video...", flush=True)
     run([
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-framerate", fps, "-i", str(green_frames / "%06d.png"),
@@ -141,8 +138,7 @@ def main():
         str(output),
     ])
 
-    print(f"Done: {output}")
-    print("Tip: copy the output to your phone's Movies folder if needed.")
+    print(f"Done: {output}", flush=True)
 
 
 if __name__ == "__main__":

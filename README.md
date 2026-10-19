@@ -1,14 +1,15 @@
 # BGremover by Feral
 
-An experimental web app that turns short anime clips into green-screen MP4s for chroma-key editing.
+A small web app that removes backgrounds from photos and short anime clips. Photos download as green-background PNGs; videos download as green-screen MP4s.
 
 **Status: public beta / proof of concept.** The app sends each extracted frame to the public SkyTNT anime segmentation demo. That third-party service can change, queue requests, throttle usage, or become unavailable. Do not rely on this for private footage or production workloads.
 
 ## Current beta limits
 
-- MP4, MOV, MKV, WebM, AVI
+- Photos: JPG, JPEG, PNG, WebP, BMP → green-background PNG
+- Videos: MP4, MOV, MKV, WebM, AVI → green-screen MP4
 - Maximum upload: 100 MB
-- Maximum clip duration: 10 seconds
+- Maximum video duration: 10 seconds
 - One active job at a time
 - Output is an MP4 with a green (#00FF00) background; audio is preserved when FFmpeg can map it
 - Job status is held in memory and temporary files may disappear when the hosting service restarts
@@ -69,6 +70,7 @@ Command-line usage:
 
 ```bash
 python remover.py input.mp4 output_green.mp4
+python remover.py photo.jpg output_green.png
 ```
 
 ## Privacy and safety

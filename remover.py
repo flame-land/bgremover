@@ -47,7 +47,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Remove anime backgrounds and export a green-screen MP4."
     )
-    parser.add_argument("input", help="Path to source video (MP4 recommended)")
+    parser.add_argument("input", help="Path to source image or video")
     parser.add_argument(
         "output", nargs="?",
         help="Output MP4 path (default: output/<name>_green.mp4)",
@@ -56,7 +56,36 @@ def main():
 
     source = Path(args.input).expanduser().resolve()
     if not source.is_file():
-        parser.error(f"Input video not found: {source}")
+        parser.error(f"Input file not found: {source}")
+
+    image_extensions = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
+    if source.suffix.lower() in image_extensions:
+        output = (
+            Path(args.output).expanduser().resolve()
+            if args.output
+            else Path("output") / f"{source.stem}_green.png"
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        print("Connecting to the background-removal service...", flush=True)
+        client = Client(SPACE_ID, verbose=False)
+        result = client.predict(handle_file(str(source)), api_name="/rmbg_fn")
+        if not isinstance(result, (list, tuple)) or not result:
+            raise RuntimeError("Unexpected model response. The public Space API may have changed.")
+        mask_path = result_path(result[0])
+        if not mask_path or not Path(mask_path).is_file():
+            raise RuntimeError("Could not find the returned mask. The public Space API may have changed.")
+        with Image.open(source) as image:
+            original = image.convert("RGBA")
+        with Image.open(mask_path) as image:
+            mask = image.convert("L")
+        if mask.size != original.size:
+            mask = mask.resize(original.size, Image.Resampling.LANCZOS)
+        original.putalpha(mask)
+        background = Image.new("RGBA", original.size, GREEN)
+        background.alpha_composite(original)
+        background.save(output, format="PNG", optimize=True)
+        print(f"Done: {output}", flush=True)
+        return
 
     output = (
         Path(args.output).expanduser().resolve()

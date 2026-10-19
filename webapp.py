@@ -44,29 +44,74 @@ PAGE = r"""
 <meta name="description" content="Experimental anime video background remover. Export a green-screen MP4 for chroma key editing.">
 <title>BGremover — Feral Labs</title>
 <style>
-:root{color-scheme:dark;--bg:#080b12;--panel:#101827;--line:#253249;--muted:#9aabc4;--blue:#60a5fa;--green:#86efac}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#14213a 0%,var(--bg) 60%);color:#f3f6fb;font:16px/1.5 system-ui,-apple-system,sans-serif;padding:24px;display:grid;place-items:center}
-main{width:min(100%,620px)}.brand{font-size:12px;letter-spacing:.18em;color:var(--blue);font-weight:800}.panel{margin-top:12px;background:#101827ed;border:1px solid var(--line);border-radius:22px;padding:clamp(20px,5vw,34px);box-shadow:0 24px 90px #0007}h1{font-size:clamp(28px,7vw,40px);line-height:1.1;margin:10px 0}p{color:var(--muted)}.drop{display:block;margin:22px 0;border:1px dashed #496080;border-radius:16px;padding:22px 14px;text-align:center;background:#0b1220;cursor:pointer}.drop strong{display:block;margin-bottom:7px}.drop input{display:block;width:100%;margin-top:14px;color:var(--muted)}button,.download{display:block;width:100%;border:0;border-radius:12px;padding:14px 16px;background:var(--blue);color:#07111f;font-weight:800;font-size:16px;text-align:center;text-decoration:none;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.status{display:none;margin-top:18px;padding:14px;border-radius:12px;background:#0b1220;border:1px solid var(--line);overflow-wrap:anywhere}.status.show{display:block}.error{color:#fca5a5}.success{color:var(--green)}.bar{height:9px;background:#263349;border-radius:99px;overflow:hidden;margin:12px 0}.fill{height:100%;width:0;background:var(--blue);transition:width .25s}.small{font-size:12px}.fineprint{font-size:12px;color:#8292aa;margin-top:18px}.links{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px}.links a{color:#93c5fd}footer{font-size:12px;color:#71829c;margin:16px 4px}
+:root{color-scheme:light;--paper:#f7f5f0;--card:#fff;--ink:#252923;--muted:#6d7169;--line:#e4e1d8;--accent:#e56b42;--accent-dark:#c9512b;--soft:#fff1e9;--green:#26734d}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--paper);color:var(--ink);font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:28px 18px 20px}
+main{width:min(100%,720px);margin:0 auto}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:5px 2px 28px}
+.brandmark{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:800;letter-spacing:-.04em}
+.mark{display:grid;place-items:center;width:34px;height:34px;background:var(--accent);color:white;border-radius:10px;font-size:18px;font-weight:900}
+.topnote{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:6px 10px;background:#fff}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:clamp(22px,5vw,42px);box-shadow:0 8px 28px #28261b0a}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;font-weight:800;color:var(--accent-dark);margin:0 0 12px}
+h1{font-size:clamp(30px,6vw,46px);letter-spacing:-.055em;line-height:1.08;margin:0;max-width:540px}
+.intro{font-size:16px;color:var(--muted);max-width:560px;margin:16px 0 26px}
+.section-label{font-size:14px;font-weight:750;margin-bottom:9px}
+.drop{display:block;border:1.5px dashed #d4cfc4;border-radius:14px;padding:24px 18px;text-align:center;background:#fbfaf7;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover{border-color:var(--accent);background:#fffaf6}
+.file-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:var(--soft);color:var(--accent-dark);font-size:21px;margin:0 auto 12px}
+.drop strong{display:block;font-size:15px;margin-bottom:4px}
+.drop span{display:block;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.drop input{display:block;width:min(100%,300px);margin:16px auto 0;font:inherit;font-size:13px;color:var(--muted)}
+button,.download{display:block;width:100%;border:0;border-radius:11px;padding:14px 16px;margin-top:14px;background:var(--accent);color:#fff;font-weight:750;font-size:15px;text-align:center;text-decoration:none;cursor:pointer;transition:background .15s}
+button:hover,.download:hover{background:var(--accent-dark)}
+button:disabled{opacity:.6;cursor:wait}
+.limits{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.limit{font-size:12px;color:var(--muted);background:#f4f2ec;border-radius:7px;padding:5px 8px}
+.status{display:none;margin-top:20px;padding:17px;border-radius:12px;background:#faf9f6;border:1px solid var(--line);overflow-wrap:anywhere}
+.status.show{display:block}
+.error{color:#b9382b}.success{color:var(--green)}
+.bar{height:7px;background:#e9e6df;border-radius:99px;overflow:hidden;margin:13px 0 8px}
+.fill{height:100%;width:0;background:var(--accent);transition:width .25s}
+#percent{font-size:13px;font-weight:750}
+.small{font-size:13px}
+.fineprint{font-size:12px;line-height:1.6;color:var(--muted);margin:20px 0 0}
+.links{display:flex;gap:18px;flex-wrap:wrap;margin-top:19px;padding-top:17px;border-top:1px solid var(--line)}
+.links a{font-size:13px;color:#655d51;text-underline-offset:3px}
+.links a:hover{color:var(--accent-dark)}
+footer{font-size:12px;color:var(--muted);line-height:1.6;margin:17px 3px}
+@media(max-width:480px){body{padding:17px 12px}.topbar{padding-bottom:18px}.panel{border-radius:16px}.topnote{font-size:11px}.drop{padding:20px 12px}}
 </style></head>
 <body><main>
-<div class="brand">FERAL LABS / VIDEO TOOLS</div>
+<header class="topbar">
+  <div class="brandmark"><span class="mark">B</span><span>BGremover</span></div>
+  <div class="topnote">Experimental beta</div>
+</header>
 <section class="panel">
-<div class="brand">BGREMOVER · EXPERIMENTAL BETA</div>
-<h1>Remove the anime background.</h1>
-<p>Upload a short anime clip and get an MP4 with a pure green background for chroma key editing.</p>
-<form id="form">
-<label class="drop"><strong>Choose a video</strong><span id="filename">MP4, MOV, MKV, WebM or AVI · maximum 100 MB · maximum 10 seconds</span><input id="video" type="file" name="video" accept=".mp4,.mov,.mkv,.webm,.avi,video/*" required></label>
-<button id="submit" type="submit">Upload &amp; remove background</button>
-</form>
-<div id="status" class="status" role="status" aria-live="polite"><strong id="stage">Preparing…</strong><div class="bar"><div id="fill" class="fill"></div></div><div id="percent">0%</div><p id="detail" class="small">Keep this page open. Processing time depends on the clip and the remote model queue.</p><div id="download"></div></div>
-<p class="fineprint">Privacy: video frames are sent to a third-party hosted AI demo. Do not upload private, personal, or sensitive footage. Uploaded files are temporary and may be removed when the service restarts. This is an experimental project, not a guaranteed or always-available service.</p>
-<div class="links"><a href="https://github.com/flame-land/bgremover">Source code</a><a href="https://huggingface.co/spaces/skytnt/anime-remove-background">AI service details</a></div>
-</section><footer>Best for short anime clips. Fine edges, motion blur, and auras may not be preserved perfectly.</footer>
+  <p class="eyebrow">A simple tool for anime editors</p>
+  <h1>Get your clip ready for a clean key.</h1>
+  <p class="intro">Remove the background from a short anime video and export it on a solid green screen. Drop the result into your editor and key out the green.</p>
+  <form id="form">
+    <div class="section-label">Choose your video</div>
+    <label class="drop">
+      <div class="file-icon" aria-hidden="true">↑</div>
+      <strong>Pick a video from your device</strong>
+      <span id="filename">Your original file stays yours. We only need it to process the clip.</span>
+      <input id="video" type="file" name="video" accept=".mp4,.mov,.mkv,.webm,.avi,video/*" required>
+    </label>
+    <div class="limits"><span class="limit">MP4, MOV, MKV, WebM, AVI</span><span class="limit">Up to 100 MB</span><span class="limit">Up to 10 seconds</span></div>
+    <button id="submit" type="submit">Remove background</button>
+  </form>
+  <div id="status" class="status" role="status" aria-live="polite"><strong id="stage">Getting things ready…</strong><div class="bar"><div id="fill" class="fill"></div></div><div id="percent">0%</div><p id="detail" class="small">Processing time depends on the clip and the remote model queue.</p><div id="download"></div></div>
+  <p class="fineprint"><strong>Quick privacy note:</strong> processing uses a third-party hosted AI service, so video frames are sent to that service. Please don't upload private or sensitive footage. Files are temporary and may be cleared when the server restarts. Results can vary, especially around fast motion, glow, and motion blur.</p>
+  <nav class="links" aria-label="Project links"><a href="https://github.com/flame-land/bgremover">View source code</a><a href="https://huggingface.co/spaces/skytnt/anime-remove-background">About the AI service</a></nav>
+</section>
+<footer>Made for quick editing workflows. This is an experimental community project, so processing may be slow or temporarily unavailable.</footer>
 </main>
 <script>
 const form=document.querySelector('#form'), input=document.querySelector('#video'), btn=document.querySelector('#submit');
 const statusBox=document.querySelector('#status'), stage=document.querySelector('#stage'), fill=document.querySelector('#fill'), percent=document.querySelector('#percent'), detail=document.querySelector('#detail'), download=document.querySelector('#download'), filename=document.querySelector('#filename');
-input.addEventListener('change',()=>{filename.textContent=input.files[0]?.name || 'MP4, MOV, MKV, WebM or AVI · maximum 100 MB · maximum 10 seconds';});
+input.addEventListener('change',()=>{filename.textContent=input.files[0]?.name || 'Your original file stays yours. We only need it to process the clip.';});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 form.addEventListener('submit',async e=>{
  e.preventDefault(); if(!input.files.length)return;
@@ -84,7 +129,7 @@ form.addEventListener('submit',async e=>{
    if(s.state==='error')throw new Error(s.error||'Processing failed.');
   }
  }catch(err){stage.textContent='Could not finish';stage.className='error';detail.textContent=err.message;fill.style.width='0%';}
- finally{btn.disabled=false;btn.textContent='Upload another video';}
+ finally{btn.disabled=false;btn.textContent='Remove background';}
 });
 </script></body></html>
 """

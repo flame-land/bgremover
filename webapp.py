@@ -83,16 +83,27 @@ const form=document.querySelector('#form'), input=document.querySelector('#video
 const statusBox=document.querySelector('#status'), stage=document.querySelector('#stage'), fill=document.querySelector('#fill'), percent=document.querySelector('#percent'), detail=document.querySelector('#detail'), download=document.querySelector('#download'), filename=document.querySelector('#filename');
 input.addEventListener('change',()=>{filename.textContent=input.files[0]?.name || 'Select a file from your device';});
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function readJsonResponse(response, label){
+ const raw=await response.text();
+ if(!raw.trim()){
+  throw new Error(label+' returned an empty response (HTTP '+response.status+'). The server may have restarted or the job may have crashed; check Render logs.');
+ }
+ try{return JSON.parse(raw);}
+ catch(_){
+  const preview=raw.slice(0,160).replace(/\\s+/g,' ');
+  throw new Error(label+' returned invalid JSON (HTTP '+response.status+'): '+(preview||'empty response'));
+ }
+}
 form.addEventListener('submit',async e=>{
  e.preventDefault(); if(!input.files.length)return;
  btn.disabled=true;btn.textContent='Uploading…';statusBox.classList.add('show');download.innerHTML='';fill.style.width='2%';percent.textContent='Uploading';stage.textContent='Uploading video';detail.textContent='Your file is being sent securely to the hosting server over HTTPS.';
  try{
   const fd=new FormData();fd.append('video',input.files[0]);
-  const res=await fetch('/api/jobs',{method:'POST',body:fd});const data=await res.json();
+  const res=await fetch('/api/jobs',{method:'POST',body:fd});const data=await readJsonResponse(res,'Upload endpoint');
   if(!res.ok)throw new Error(data.error||'Upload failed.');
   stage.textContent='Queued';detail.textContent='Connecting to the remote AI model. Each video frame is processed separately, so this can take a while.';
   while(true){
-   await sleep(1800);const sr=await fetch('/api/jobs/'+encodeURIComponent(data.job_id));const s=await sr.json();
+   await sleep(1800);const sr=await fetch('/api/jobs/'+encodeURIComponent(data.job_id));const s=await readJsonResponse(sr,'Job status endpoint');
    if(!sr.ok)throw new Error(s.error||'Could not read job status.');
    stage.textContent=s.stage||'Processing';percent.textContent=(s.percent??0)+'%';fill.style.width=(s.percent??0)+'%';detail.textContent=s.detail||'Processing…';
    if(s.state==='done'){fill.style.width='100%';percent.textContent='100%';stage.textContent='Ready to download';stage.classList.add('success');download.innerHTML='<a class="download" href="/api/jobs/'+encodeURIComponent(data.job_id)+'/download">Download '+(s.is_image?'green-screen PNG':'green-screen MP4')+'</a>';break;}

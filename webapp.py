@@ -41,78 +41,62 @@ PAGE = r"""
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#080b12">
-<meta name="description" content="Image and anime video background remover.">
-<title>Background remover</title>
-<style>:root{color-scheme:light;--bg:#f5f5f2;--surface:#fff;--text:#22231f;--muted:#777970;--line:#e3e3dd;--accent:#426b55;--accent-hover:#31513f}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;padding:24px 14px;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{width:min(100%,500px);margin:8vh auto 0}.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px}
-h1{font-size:22px;line-height:1.25;letter-spacing:-.025em;margin:0 0 5px;font-weight:700}.intro{margin:0 0 20px;color:var(--muted);font-size:14px}
-.section-label{font-weight:650;font-size:14px;margin-bottom:8px}.drop{display:block;padding:18px;border:1px dashed #c8cbc3;border-radius:9px;text-align:center;background:#fafaf8;cursor:pointer}.drop:hover{border-color:var(--accent)}
-.drop strong{display:block;font-size:14px;font-weight:650;margin-bottom:4px}.drop span{display:block;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.drop input{display:block;width:100%;margin-top:14px;font:inherit;font-size:12px;color:var(--muted)}
-button,.download{display:block;width:100%;border:0;border-radius:8px;padding:12px 14px;background:var(--accent);color:white;font:600 14px system-ui,sans-serif;text-align:center;text-decoration:none;cursor:pointer}.download{margin-top:14px}button:hover,.download:hover{background:var(--accent-hover)}button:disabled{opacity:.6;cursor:wait}
-.limits{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 14px}.limit{font-size:11px;color:var(--muted);background:#f1f2ee;border-radius:5px;padding:4px 7px}
-.status{display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:9px;background:#fafaf8;overflow-wrap:anywhere}.status.show{display:block}.error{color:#b42318}.success{color:var(--accent)}
-.bar{height:5px;background:#e5e6e0;border-radius:99px;overflow:hidden;margin:12px 0 7px}.fill{height:100%;width:0;background:var(--accent);transition:width .25s}#percent{font-size:12px;font-weight:650}.small{font-size:12px;color:var(--muted);margin-bottom:0}
-.fineprint{font-size:11px;line-height:1.5;color:var(--muted);margin:14px 1px 0}.links{display:flex;gap:14px;margin-top:12px}.links a{font-size:12px;color:var(--muted);text-underline-offset:3px}
-@media(max-width:480px){body{padding:14px 10px}main{margin:4vh auto 0}.panel{padding:18px}}</style></head>
-<body><main>
-
-<section class="panel">
-  <h1>Background remover</h1>
-  <p class="intro">Upload a photo or anime clip to remove its background.</p>
-  <form id="form">
-    <div class="section-label">Choose your video</div>
-    <label class="drop">
-      <strong>Choose a video</strong>
-      <span id="filename">Photos or videos · up to 100 MB</span>
-      <input id="video" type="file" name="video" accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,image/*,video/*" required>
-    </label>
-    <div class="limits"><span class="limit">JPG, PNG, WebP, BMP</span><span class="limit">MP4, MOV, MKV, WebM, AVI</span><span class="limit">100 MB max · video 10 sec max</span></div>
-    <button id="submit" type="submit">Remove background</button>
-  </form>
-  <div id="status" class="status" role="status" aria-live="polite"><strong id="stage">Getting things ready…</strong><div class="bar"><div id="fill" class="fill"></div></div><div id="percent">0%</div><p id="detail" class="small">Processing time depends on the clip and the remote model queue.</p><div id="download"></div></div>
-  <p class="fineprint"><strong>Quick privacy note:</strong> processing uses a third-party hosted AI service, so video frames are sent to that service. Please don't upload private or sensitive footage. Files are temporary and may be cleared when the server restarts. Results can vary, especially around fast motion, glow, and motion blur.</p>
-  <nav class="links" aria-label="Project links"><a href="https://github.com/flame-land/bgremover">View source code</a><a href="https://huggingface.co/spaces/skytnt/anime-remove-background">About the AI service</a></nav>
-</section>
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111111">
+<title>BGremover</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#f5f5f5;font:16px system-ui,-apple-system,sans-serif;padding:20px}
+main{width:min(100%,360px);text-align:center}p{margin:0 0 24px;color:#c8c8c8;line-height:1.5}
+button{width:100%;padding:15px;border:0;border-radius:10px;background:#fff;color:#111;font:600 16px system-ui;cursor:pointer}
+button:disabled{opacity:.55;cursor:wait}input{display:none}
+#status{margin-top:18px;color:#c8c8c8;font-size:14px;overflow-wrap:anywhere}#status:empty{display:none}
+a{display:block;margin-top:18px;color:#fff;font-weight:600}
+</style>
+</head>
+<body>
+<main>
+<p>Remove the background from a photo or anime clip.</p>
+<input id="file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,image/*,video/*">
+<button id="choose" type="button">Choose photo or video</button>
+<div id="status" role="status" aria-live="polite"></div>
+<div id="result"></div>
 </main>
 <script>
-const form=document.querySelector('#form'), input=document.querySelector('#video'), btn=document.querySelector('#submit');
-const statusBox=document.querySelector('#status'), stage=document.querySelector('#stage'), fill=document.querySelector('#fill'), percent=document.querySelector('#percent'), detail=document.querySelector('#detail'), download=document.querySelector('#download'), filename=document.querySelector('#filename');
-input.addEventListener('change',()=>{filename.textContent=input.files[0]?.name || 'Select a file from your device';});
-const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function readJsonResponse(response, label){
+const input=document.querySelector('#file'),button=document.querySelector('#choose'),status=document.querySelector('#status'),result=document.querySelector('#result');
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function json(response,label){
  const raw=await response.text();
- if(!raw.trim()){
-  throw new Error(label+' returned an empty response (HTTP '+response.status+'). The server may have restarted or the job may have crashed; check Render logs.');
- }
- try{return JSON.parse(raw);}
- catch(_){
-  const preview=raw.slice(0,160).replace(/\\s+/g,' ');
-  throw new Error(label+' returned invalid JSON (HTTP '+response.status+'): '+(preview||'empty response'));
- }
+ if(!raw.trim())throw new Error(label+' failed (HTTP '+response.status+'). Try again later.');
+ try{return JSON.parse(raw)}catch(_){throw new Error(label+' returned an invalid response. Try again later.')}
 }
-form.addEventListener('submit',async e=>{
- e.preventDefault(); if(!input.files.length)return;
- btn.disabled=true;btn.textContent='Uploading…';statusBox.classList.add('show');download.innerHTML='';fill.style.width='2%';percent.textContent='Uploading';stage.textContent='Uploading video';detail.textContent='Your file is being sent securely to the hosting server over HTTPS.';
+button.addEventListener('click',()=>input.click());
+input.addEventListener('change',async()=>{
+ if(!input.files.length)return;
+ button.disabled=true;button.textContent='Processing…';status.textContent='Uploading and removing background…';result.innerHTML='';
  try{
-  const fd=new FormData();fd.append('video',input.files[0]);
-  const res=await fetch('/api/jobs',{method:'POST',body:fd});const data=await readJsonResponse(res,'Upload endpoint');
-  if(!res.ok)throw new Error(data.error||'Upload failed.');
-  stage.textContent='Queued';detail.textContent='Connecting to the remote AI model. Each video frame is processed separately, so this can take a while.';
+  const form=new FormData();form.append('video',input.files[0]);
+  const response=await fetch('/api/jobs',{method:'POST',body:form});
+  const job=await json(response,'Upload');
+  if(!response.ok)throw new Error(job.error||'Upload failed.');
   while(true){
-   await sleep(1800);const sr=await fetch('/api/jobs/'+encodeURIComponent(data.job_id));const s=await readJsonResponse(sr,'Job status endpoint');
-   if(!sr.ok)throw new Error(s.error||'Could not read job status.');
-   stage.textContent=s.stage||'Processing';percent.textContent=(s.percent??0)+'%';fill.style.width=(s.percent??0)+'%';detail.textContent=s.detail||'Processing…';
-   if(s.state==='done'){fill.style.width='100%';percent.textContent='100%';stage.textContent='Ready to download';stage.classList.add('success');download.innerHTML='<a class="download" href="/api/jobs/'+encodeURIComponent(data.job_id)+'/download">Download '+(s.is_image?'green-screen PNG':'green-screen MP4')+'</a>';break;}
-   if(s.state==='error')throw new Error(s.error||'Processing failed.');
+   await sleep(1800);
+   const sr=await fetch('/api/jobs/'+encodeURIComponent(job.job_id));
+   const state=await json(sr,'Status');
+   if(!sr.ok)throw new Error(state.error||'Could not check processing status.');
+   status.textContent=state.stage||'Processing…';
+   if(state.state==='done'){
+    status.textContent='Done.';
+    const link=document.createElement('a');link.href='/api/jobs/'+encodeURIComponent(job.job_id)+'/download';link.textContent='Download result';result.appendChild(link);break;
+   }
+   if(state.state==='error')throw new Error(state.error||'Processing failed.');
   }
- }catch(err){stage.textContent='Could not finish';stage.className='error';detail.textContent=err.message;fill.style.width='0%';}
- finally{btn.disabled=false;btn.textContent='Remove background';}
+ }catch(error){status.textContent=error.message||'Something went wrong. Please try again.'}
+ finally{button.disabled=false;button.textContent='Choose photo or video';input.value=''}
 });
-</script></body></html>
+</script>
+</body>
+</html>
 """
 
 

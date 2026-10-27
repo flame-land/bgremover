@@ -17,6 +17,17 @@ A small web app that removes backgrounds from photos and short anime clips. Phot
 
 The frame-by-frame model calls can be slow. Processing time depends on frame count, remote queue load, network speed, and the third-party model's availability. Progress is an estimate based on frames completed.
 
+## Video and audio downloads
+
+The homepage includes a separate downloader for public video-page links supported by yt-dlp. Paste a link, choose MP4 video or MP3 audio, select video resolution (360p–1080p or best available) or audio bitrate (128–320 kbps), and download the rendered file.
+
+- Maximum final file size: 100 MB
+- Videos longer than 10 minutes are rejected when the source reports its duration
+- One active download at a time on the small beta host
+- Private, login-required, DRM-protected, or unsupported links may fail; site support can change
+- Render installs FFmpeg in the Docker image for audio conversion and video merging
+- Use only content you have permission to download
+
 ## Deploy online with Render
 
 This repository includes a Dockerfile and render.yaml. Docker installs FFmpeg and Python dependencies; Gunicorn serves Flask on the port provided by the hosting platform.

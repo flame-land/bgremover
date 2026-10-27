@@ -385,11 +385,17 @@ def run_download_job(job_id, url, mode, quality):
                 output=output.name, mode=mode)
     except Exception as exc:
         message = str(exc).strip()
-        if "Video unavailable" in message or "Private video" in message:
+        lowered = message.lower()
+        if "sign in to confirm you're not a bot" in lowered or "confirm you're not a bot" in lowered:
+            message = (
+                "YouTube is blocking downloads from this server right now. "
+                "Try another supported public-video link, or use YouTube's official options."
+            )
+        elif "video unavailable" in lowered or "private video" in lowered:
             message = "This video is unavailable or private. Try a public link."
-        elif "Unsupported URL" in message:
+        elif "unsupported url" in lowered:
             message = "This site or link is not supported by the downloader."
-        elif "maximum file size" in message.lower() or "max-filesize" in message.lower():
+        elif "maximum file size" in lowered or "max-filesize" in lowered:
             message = "The file is too large. Try a lower quality or a shorter video."
         elif not message:
             message = "Download failed. The link may be unsupported or the site may be temporarily unavailable."

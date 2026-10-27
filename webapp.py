@@ -83,12 +83,14 @@ a{display:block;margin-top:16px;color:#fff;font-weight:600}#downloadResult:empty
 <select id="quality" aria-label="Quality">
 <option value="720">720p</option><option value="480">480p</option><option value="360">360p</option><option value="1080">1080p</option><option value="best">Best available</option>
 </select>
+<div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-action="download" style="margin:12px 0"></div>
 <button id="downloadButton" type="submit">Download</button>
 </form>
 <div id="downloadStatus" role="status" aria-live="polite"></div>
 <div id="downloadResult"></div>
 </section>
 </main>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script>
 const input=document.querySelector('#file'),button=document.querySelector('#choose'),status=document.querySelector('#status'),result=document.querySelector('#result');
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -105,7 +107,7 @@ downloadForm.addEventListener('submit',async event=>{
  event.preventDefault();if(!videoUrl.value.trim())return;
  downloadButton.disabled=true;downloadButton.textContent='Preparing…';downloadStatus.textContent='Starting download…';downloadResult.replaceChildren();
  try{
-  const response=await fetch('/api/downloads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:videoUrl.value.trim(),type:downloadType.value,quality:quality.value})});
+  const response=await fetch('/api/downloads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:videoUrl.value.trim(),type:downloadType.value,quality:quality.value,turnstile_token:(document.querySelector('[name="cf-turnstile-response"]')||{}).value||''})});
   const job=await json(response,'Download');if(!response.ok)throw new Error(job.error||'Could not start download.');
   while(true){
    await sleep(1800);
@@ -229,7 +231,7 @@ def process_job(job_id, source, output):
 
 @app.get("/")
 def index():
-    return render_template_string(PAGE)
+    return render_template_string(PAGE, turnstile_site_key=os.environ.get("TURNSTILE_SITE_KEY", ""))
 
 
 @app.post("/api/jobs")
@@ -305,6 +307,37 @@ def validate_download_url(value):
     if "." not in host:
         raise ValueError("Enter a public video page link.")
     return parsed.geturl()
+
+
+
+def validate_turnstile_token(token):
+    """Validate a Turnstile token server-side; never trust the browser alone."""
+    secret = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
+    sitekey = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+    if not secret or not sitekey:
+        return False, "CAPTCHA is not configured yet. Please try again later."
+    if not token or len(token) > 2048:
+        return False, "Complete the verification before downloading."
+    try:
+        import requests
+        response = requests.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": secret, "response": token},
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+    except Exception:
+        app.logger.exception("Turnstile verification request failed")
+        return False, "Verification is temporarily unavailable. Please try again."
+    if not result.get("success"):
+        return False, "Verification failed or expired. Please verify again."
+    expected_hostname = os.environ.get("TURNSTILE_HOSTNAME", "").strip().lower()
+    if expected_hostname and str(result.get("hostname", "")).lower() != expected_hostname:
+        return False, "Verification failed for this website. Please refresh and try again."
+    if result.get("action") and result.get("action") != "download":
+        return False, "Verification failed. Please refresh and try again."
+    return True, None
 
 
 def run_download_job(job_id, url, mode, quality):
@@ -411,6 +444,10 @@ def run_download_job(job_id, url, mode, quality):
 @app.post("/api/downloads")
 def create_download():
     data = request.get_json(silent=True) or {}
+    valid_captcha, captcha_error = validate_turnstile_token(str(data.get("turnstile_token", "")))
+    if not valid_captcha:
+        status = 503 if "not configured" in (captcha_error or "").lower() else 400
+        return jsonify(error=captcha_error), status
     try:
         url = validate_download_url(str(data.get("url", "")))
     except ValueError as exc:

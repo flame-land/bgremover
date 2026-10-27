@@ -2,6 +2,7 @@
 """Web UI for BGremover. Intended for a small beta deployment, not high traffic."""
 
 import json
+import ipaddress
 import os
 import re
 import subprocess
@@ -10,6 +11,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, jsonify, render_template_string, request, send_file, abort
 from werkzeug.utils import secure_filename
@@ -18,13 +20,16 @@ BASE = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE / "uploads"
 OUTPUT_DIR = BASE / "output"
 WORK_DIR = BASE / "frames"
+DOWNLOAD_DIR = BASE / "downloads"
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 MAX_DURATION_SECONDS = 10
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+MAX_DOWNLOAD_DURATION_SECONDS = 600
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 ALLOWED_EXTENSIONS = VIDEO_EXTENSIONS | IMAGE_EXTENSIONS
 
-for directory in (UPLOAD_DIR, OUTPUT_DIR, WORK_DIR):
+for directory in (UPLOAD_DIR, OUTPUT_DIR, WORK_DIR, DOWNLOAD_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 app = Flask(__name__)
@@ -36,6 +41,9 @@ app.config["JSON_SORT_KEYS"] = False
 jobs = {}
 jobs_lock = threading.Lock()
 worker_lock = threading.Lock()
+download_jobs = {}
+download_jobs_lock = threading.Lock()
+download_worker_lock = threading.Lock()
 
 PAGE = r"""
 <!doctype html>
@@ -47,20 +55,39 @@ PAGE = r"""
 <title>BGremover</title>
 <style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#111;color:#f5f5f5;font:16px system-ui,-apple-system,sans-serif;padding:20px}
-main{width:min(100%,360px);text-align:center}p{margin:0 0 24px;color:#c8c8c8;line-height:1.5}
-button{width:100%;padding:15px;border:0;border-radius:10px;background:#fff;color:#111;font:600 16px system-ui;cursor:pointer}
-button:disabled{opacity:.55;cursor:wait}input{display:none}
-#status{margin-top:18px;color:#c8c8c8;font-size:14px;overflow-wrap:anywhere}#status:empty{display:none}
-a{display:block;margin-top:18px;color:#fff;font-weight:600}
+main{width:min(100%,380px);text-align:center}p{margin:0 0 20px;color:#c8c8c8;line-height:1.5}
+section{padding:22px 0}section+section{border-top:1px solid #333}h2{font-size:17px;font-weight:650;margin:0 0 14px}
+button,select,#videoUrl{width:100%;padding:13px;border:0;border-radius:10px;font:500 15px system-ui}
+button{background:#fff;color:#111;font-weight:650;cursor:pointer}button:disabled{opacity:.55;cursor:wait}
+input[type=file]{display:none}#videoUrl,select{display:block;background:#222;color:#f5f5f5;border:1px solid #393939;margin-bottom:10px;min-width:0}
+#status,#downloadStatus{margin-top:14px;color:#c8c8c8;font-size:14px;overflow-wrap:anywhere}#status:empty,#downloadStatus:empty{display:none}
+a{display:block;margin-top:16px;color:#fff;font-weight:600}#downloadResult:empty{display:none}
 </style>
 </head>
 <body>
 <main>
+<section>
 <p>Remove the background from a photo or anime clip.</p>
 <input id="file" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.mp4,.mov,.mkv,.webm,.avi,image/*,video/*">
 <button id="choose" type="button">Choose photo or video</button>
 <div id="status" role="status" aria-live="polite"></div>
 <div id="result"></div>
+</section>
+<section>
+<h2>Download a video</h2>
+<form id="downloadForm">
+<input id="videoUrl" type="url" placeholder="Paste YouTube or social video link" autocomplete="url" required>
+<select id="downloadType" aria-label="Download type">
+<option value="video">Video (MP4)</option><option value="audio">Audio (MP3)</option>
+</select>
+<select id="quality" aria-label="Quality">
+<option value="720">720p</option><option value="480">480p</option><option value="360">360p</option><option value="1080">1080p</option><option value="best">Best available</option>
+</select>
+<button id="downloadButton" type="submit">Download</button>
+</form>
+<div id="downloadStatus" role="status" aria-live="polite"></div>
+<div id="downloadResult"></div>
+</section>
 </main>
 <script>
 const input=document.querySelector('#file'),button=document.querySelector('#choose'),status=document.querySelector('#status'),result=document.querySelector('#result');
@@ -71,6 +98,26 @@ async function json(response,label){
  try{return JSON.parse(raw)}catch(_){throw new Error(label+' returned an invalid response. Try again later.')}
 }
 button.addEventListener('click',()=>input.click());
+const downloadForm=document.querySelector('#downloadForm'),videoUrl=document.querySelector('#videoUrl'),downloadType=document.querySelector('#downloadType'),quality=document.querySelector('#quality'),downloadButton=document.querySelector('#downloadButton'),downloadStatus=document.querySelector('#downloadStatus'),downloadResult=document.querySelector('#downloadResult');
+const qualityOptions={video:[['best','Best available'],['1080','1080p'],['720','720p'],['480','480p'],['360','360p']],audio:[['128','128 kbps'],['192','192 kbps'],['320','320 kbps']]};
+downloadType.addEventListener('change',()=>{const previous=quality.value;quality.replaceChildren(...qualityOptions[downloadType.value].map(item=>{const option=document.createElement('option');option.value=item[0];option.textContent=item[1];return option}));if(qualityOptions[downloadType.value].some(item=>item[0]===previous))quality.value=previous;});
+downloadForm.addEventListener('submit',async event=>{
+ event.preventDefault();if(!videoUrl.value.trim())return;
+ downloadButton.disabled=true;downloadButton.textContent='Preparing…';downloadStatus.textContent='Starting download…';downloadResult.replaceChildren();
+ try{
+  const response=await fetch('/api/downloads',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:videoUrl.value.trim(),type:downloadType.value,quality:quality.value})});
+  const job=await json(response,'Download');if(!response.ok)throw new Error(job.error||'Could not start download.');
+  while(true){
+   await sleep(1800);
+   const sr=await fetch('/api/downloads/'+encodeURIComponent(job.job_id));const state=await json(sr,'Status');
+   if(!sr.ok)throw new Error(state.error||'Could not check download status.');
+   downloadStatus.textContent=state.detail||state.stage||'Processing…';
+   if(state.state==='done'){downloadStatus.textContent='Your file is ready.';const link=document.createElement('a');link.href='/api/downloads/'+encodeURIComponent(job.job_id)+'/file';link.textContent='Download '+(downloadType.value==='audio'?'MP3 audio':'MP4 video');downloadResult.appendChild(link);break;}
+   if(state.state==='error')throw new Error(state.error||'Download failed.');
+  }
+ }catch(error){downloadStatus.textContent=error.message||'Download failed. Please try again.'}
+ finally{downloadButton.disabled=false;downloadButton.textContent='Download'}
+});
 input.addEventListener('change',async()=>{
  if(!input.files.length)return;
  button.disabled=true;button.textContent='Processing…';status.textContent='Uploading and removing background…';result.innerHTML='';
@@ -240,6 +287,164 @@ def job_download(job_id):
     if not filename or not path.is_file() or path.parent.resolve() != OUTPUT_DIR.resolve():
         abort(404)
     return send_file(path, as_attachment=True, download_name=("bgremover_green.png" if path.suffix.lower() == ".png" else "bgremover_green.mp4"), mimetype=("image/png" if path.suffix.lower() == ".png" else "video/mp4"))
+
+
+def validate_download_url(value):
+    parsed = urlparse(value.strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("Enter a valid public video URL beginning with https://.")
+    host = parsed.hostname.lower().rstrip(".")
+    if host in {"localhost", "localhost.localdomain"} or host.endswith((".local", ".internal", ".localhost")):
+        raise ValueError("That host is not allowed. Use a public social-video link.")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("Direct IP-address URLs are not supported. Paste the public video page link.")
+    if "." not in host:
+        raise ValueError("Enter a public video page link.")
+    return parsed.geturl()
+
+
+def run_download_job(job_id, url, mode, quality):
+    if not download_worker_lock.acquire(blocking=False):
+        with download_jobs_lock:
+            download_jobs[job_id].update(state="error", stage="Busy",
+                error="Another download is running. Please try again shortly.")
+        return
+    try:
+        import yt_dlp
+
+        def progress_hook(data):
+            status = data.get("status")
+            if status == "downloading":
+                total = data.get("total_bytes") or data.get("total_bytes_estimate") or 0
+                current = data.get("downloaded_bytes") or 0
+                detail = ("Downloading: " + str(min(99, int(current * 100 / total))) + "%") if total else "Downloading video…"
+                with download_jobs_lock:
+                    if job_id in download_jobs:
+                        download_jobs[job_id].update(stage="Downloading", detail=detail)
+            elif status == "finished":
+                with download_jobs_lock:
+                    if job_id in download_jobs:
+                        download_jobs[job_id].update(stage="Rendering file", detail="Preparing the final file…")
+
+        template = str(DOWNLOAD_DIR / (job_id + ".%(ext)s"))
+        match_filter = lambda info, incomplete: (
+            "Videos longer than 10 minutes are not supported."
+            if info.get("duration") and info["duration"] > MAX_DOWNLOAD_DURATION_SECONDS else None
+        )
+        options = {
+            "format": "bestaudio/best" if mode == "audio" else (
+                "bestvideo+bestaudio/best" if quality == "best"
+                else "bestvideo[height<=" + quality + "]+bestaudio/best[height<=" + quality + "]"
+            ),
+            "outtmpl": template,
+            "noplaylist": True,
+            "max_filesize": MAX_DOWNLOAD_BYTES,
+            "socket_timeout": 20,
+            "retries": 1,
+            "quiet": True,
+            "no_warnings": True,
+            "restrictfilenames": True,
+            "progress_hooks": [progress_hook],
+            "match_filter": match_filter,
+        }
+        if mode == "audio":
+            options["postprocessors"] = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": quality,
+            }]
+        else:
+            options["merge_output_format"] = "mp4"
+
+        with download_jobs_lock:
+            download_jobs[job_id].update(state="running", stage="Connecting", detail="Connecting to the video source…")
+        with yt_dlp.YoutubeDL(options) as ydl:
+            ydl.download([url])
+        candidates = [
+            path for path in DOWNLOAD_DIR.glob(job_id + ".*")
+            if path.is_file() and not path.name.endswith((".part", ".ytdl", ".temp"))
+        ]
+        expected_ext = ".mp3" if mode == "audio" else ".mp4"
+        preferred = [path for path in candidates if path.suffix.lower() == expected_ext]
+        output = preferred[0] if preferred else (candidates[0] if candidates else None)
+        if output is None:
+            raise RuntimeError("The source did not produce a downloadable file.")
+        if output.stat().st_size > MAX_DOWNLOAD_BYTES:
+            output.unlink(missing_ok=True)
+            raise RuntimeError("The final file exceeds the 100 MB limit. Try a lower quality.")
+        with download_jobs_lock:
+            download_jobs[job_id].update(state="done", stage="Complete", detail="File ready.",
+                output=output.name, mode=mode)
+    except Exception as exc:
+        message = str(exc).strip()
+        if "Video unavailable" in message or "Private video" in message:
+            message = "This video is unavailable or private. Try a public link."
+        elif "Unsupported URL" in message:
+            message = "This site or link is not supported by the downloader."
+        elif "maximum file size" in message.lower() or "max-filesize" in message.lower():
+            message = "The file is too large. Try a lower quality or a shorter video."
+        elif not message:
+            message = "Download failed. The link may be unsupported or the site may be temporarily unavailable."
+        with download_jobs_lock:
+            if job_id in download_jobs:
+                download_jobs[job_id].update(state="error", stage="Failed", error=message[:350], detail=message[:350])
+        for path in DOWNLOAD_DIR.glob(job_id + ".*"):
+            path.unlink(missing_ok=True)
+    finally:
+        download_worker_lock.release()
+
+
+@app.post("/api/downloads")
+def create_download():
+    data = request.get_json(silent=True) or {}
+    try:
+        url = validate_download_url(str(data.get("url", "")))
+    except ValueError as exc:
+        return jsonify(error=str(exc)), 400
+    mode = str(data.get("type", "video")).lower()
+    quality = str(data.get("quality", "720"))
+    if mode not in {"video", "audio"}:
+        return jsonify(error="Choose video or audio."), 400
+    allowed_quality = {"video": {"best", "1080", "720", "480", "360"}, "audio": {"128", "192", "320"}}
+    if quality not in allowed_quality[mode]:
+        return jsonify(error="Choose one of the available quality options."), 400
+    with download_jobs_lock:
+        if any(job.get("state") in {"queued", "running"} for job in download_jobs.values()):
+            return jsonify(error="The downloader is busy. Please try again in a few minutes."), 429
+        job_id = uuid.uuid4().hex
+        download_jobs[job_id] = {"state": "queued", "stage": "Queued", "detail": "Waiting for the downloader."}
+    threading.Thread(target=run_download_job, args=(job_id, url, mode, quality), daemon=True).start()
+    return jsonify(job_id=job_id), 202
+
+
+@app.get("/api/downloads/<job_id>")
+def download_status(job_id):
+    with download_jobs_lock:
+        job = download_jobs.get(job_id)
+        if not job:
+            return jsonify(error="Download not found. It may have expired after a restart."), 404
+        safe = {key: job[key] for key in ("state", "stage", "detail", "error") if key in job}
+    return jsonify(safe)
+
+
+@app.get("/api/downloads/<job_id>/file")
+def download_file(job_id):
+    with download_jobs_lock:
+        job = download_jobs.get(job_id)
+        if not job or job.get("state") != "done":
+            abort(404)
+        filename = job.get("output", "")
+        mode = job.get("mode", "video")
+    path = DOWNLOAD_DIR / filename
+    if not filename or not path.is_file() or path.parent.resolve() != DOWNLOAD_DIR.resolve():
+        abort(404)
+    download_name = "download.mp3" if mode == "audio" else "download.mp4"
+    mimetype = "audio/mpeg" if mode == "audio" else "video/mp4"
+    return send_file(path, as_attachment=True, download_name=download_name, mimetype=mimetype)
 
 
 @app.errorhandler(413)

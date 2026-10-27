@@ -359,6 +359,10 @@ def run_download_job(job_id, url, mode, quality):
             }]
         else:
             options["merge_output_format"] = "mp4"
+            options["postprocessors"] = [{
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            }]
 
         with download_jobs_lock:
             download_jobs[job_id].update(state="running", stage="Connecting", detail="Connecting to the video source…")

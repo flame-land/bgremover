@@ -73,7 +73,7 @@ a{display:block;margin-top:16px;color:#fff;font-weight:600}#downloadResult:empty
 <div id="status" role="status" aria-live="polite"></div>
 <div id="result"></div>
 </section>
-<section>
+<section id="video-downloader">
 <h2>Download a video</h2>
 <form id="downloadForm">
 <input id="videoUrl" type="url" placeholder="Paste YouTube or social video link" autocomplete="url" required>

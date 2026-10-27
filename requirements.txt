@@ -4,4 +4,4 @@ gradio_client>=1.0.0,<2.0.0
 huggingface_hub>=0.30.0,<0.32.0
 Pillow>=10.0.0,<13.0.0
 yt-dlp>=2025.1.0
-
+requests>=2.32.0,<3.0.0
